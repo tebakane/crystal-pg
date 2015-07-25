@@ -45,12 +45,16 @@ module PG
     class BoolDecoder < Decoder
       def decode(value_ptr)
         case value_ptr.value
-        when 't'.ord
-          true
-        when 'f'.ord
+        when 0
           false
+        when 1
+          true
+      #  when 't'.ord
+      #    true
+      #  when 'f'.ord
+      #    false
         else
-          raise "bad boolean decode"
+          raise "bad boolean decode: #{value_ptr.value}"
         end
       end
     end
