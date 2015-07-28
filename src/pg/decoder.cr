@@ -2,6 +2,7 @@ require "json"
 
 lib LibC
   fun atoi(str : UInt8*) : Int32
+  fun ntohl(str : UInt32) : Int32
 end
 
 module PG
@@ -25,6 +26,8 @@ module PG
         Float64Decoder
       when 705 # unknown
         DefaultDecoder
+      when 1082
+        DateDecoder
       when 1082, 1114, 1184 # 1082:date 1114:ts, 1184:tstz
         TimeDecoder
       else
@@ -61,30 +64,56 @@ module PG
 
     class IntDecoder < Decoder
       def decode(value_ptr)
-        LibC.atoi value_ptr
+        #Intrinsics.bswap32((value_ptr as UInt32*).value).to_i
+        LibC.ntohl((value_ptr as UInt32*).value)
       end
     end
 
     class Float32Decoder < Decoder
+      # byte swapped in the same way as int4
       def decode(value_ptr)
-        LibC.strtof value_ptr, nil
+        #LibC.strtof value_ptr, nil
+      #  Intrinsics.bswap32((value_ptr as UInt32*).value).to_f
+        value_ptr[0], value_ptr[1], value_ptr[2], value_ptr[3] = value_ptr[3], value_ptr[2], value_ptr[1], value_ptr[0]
+        (value_ptr as Float32*).value
       end
     end
 
     class Float64Decoder < Decoder
       def decode(value_ptr)
-        LibC.atof value_ptr
+        #LibC.atof value_ptr
+        value_ptr[0], value_ptr[1], value_ptr[2], value_ptr[3], value_ptr[4], value_ptr[5], value_ptr[6], value_ptr[7] = value_ptr[7], value_ptr[6], value_ptr[5], value_ptr[4], value_ptr[3], value_ptr[2], value_ptr[1], value_ptr[0]
+        (value_ptr as Float64*).value
       end
     end
 
     class JsonDecoder < Decoder
       def decode(value_ptr)
+        p Slice.new(value_ptr, 10)
+        return ""
         JSON.parse(String.new(value_ptr))
+      end
+    end
+
+    class DateDecoder < Decoder
+      def decode(value_ptr)
+
+        value_ptr[0], value_ptr[1], value_ptr[2], value_ptr[3] = value_ptr[3], value_ptr[2], value_ptr[1], value_ptr[0]
+
+        v = (value_ptr as Int32*).value
+
+        return Time.new(2000,1,1, kind: Time::Kind::Utc) + TimeSpan.new(v,0,0,0)
       end
     end
 
     class TimeDecoder < Decoder
       def decode(value_ptr)
+
+        value_ptr[0], value_ptr[1], value_ptr[2], value_ptr[3], value_ptr[4], value_ptr[5], value_ptr[6], value_ptr[7] = value_ptr[7], value_ptr[6], value_ptr[5], value_ptr[4], value_ptr[3], value_ptr[2], value_ptr[1], value_ptr[0]
+
+        v = (value_ptr as Int64*).value / 1000
+
+        return Time.new(2000,1,1, kind: Time::Kind::Utc) + TimeSpan.new(0,0,0,0,v)
         curr = value_ptr
 
         curr, year   = get_next_int(curr)
