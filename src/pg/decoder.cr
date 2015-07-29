@@ -18,8 +18,10 @@ module PG
         IntDecoder
       when 25 # text
         DefaultDecoder
-      when 114, 3802
+      when 114
         JsonDecoder
+      when 3802
+        JsonbDecoder
       when 700 # float4
         Float32Decoder
       when 701 # float8
@@ -72,8 +74,6 @@ module PG
     class Float32Decoder < Decoder
       # byte swapped in the same way as int4
       def decode(value_ptr)
-        #LibC.strtof value_ptr, nil
-      #  Intrinsics.bswap32((value_ptr as UInt32*).value).to_f
         value_ptr[0], value_ptr[1], value_ptr[2], value_ptr[3] = value_ptr[3], value_ptr[2], value_ptr[1], value_ptr[0]
         (value_ptr as Float32*).value
       end
@@ -81,7 +81,6 @@ module PG
 
     class Float64Decoder < Decoder
       def decode(value_ptr)
-        #LibC.atof value_ptr
         value_ptr[0], value_ptr[1], value_ptr[2], value_ptr[3], value_ptr[4], value_ptr[5], value_ptr[6], value_ptr[7] = value_ptr[7], value_ptr[6], value_ptr[5], value_ptr[4], value_ptr[3], value_ptr[2], value_ptr[1], value_ptr[0]
         (value_ptr as Float64*).value
       end
@@ -89,15 +88,18 @@ module PG
 
     class JsonDecoder < Decoder
       def decode(value_ptr)
-        p Slice.new(value_ptr, 10)
-        return ""
         JSON.parse(String.new(value_ptr))
+      end
+    end
+
+    class JsonbDecoder < Decoder
+      def decode(value_ptr)
+        JSON.parse(String.new(value_ptr+1))
       end
     end
 
     class DateDecoder < Decoder
       def decode(value_ptr)
-
         value_ptr[0], value_ptr[1], value_ptr[2], value_ptr[3] = value_ptr[3], value_ptr[2], value_ptr[1], value_ptr[0]
 
         v = (value_ptr as Int32*).value
@@ -108,12 +110,16 @@ module PG
 
     class TimeDecoder < Decoder
       def decode(value_ptr)
-
         value_ptr[0], value_ptr[1], value_ptr[2], value_ptr[3], value_ptr[4], value_ptr[5], value_ptr[6], value_ptr[7] = value_ptr[7], value_ptr[6], value_ptr[5], value_ptr[4], value_ptr[3], value_ptr[2], value_ptr[1], value_ptr[0]
 
         v = (value_ptr as Int64*).value / 1000
 
         return Time.new(2000,1,1, kind: Time::Kind::Utc) + TimeSpan.new(0,0,0,0,v)
+      end
+    end
+
+    class StringTimeDecoder < Decoder
+      def decode(value_ptr)
         curr = value_ptr
 
         curr, year   = get_next_int(curr)
