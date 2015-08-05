@@ -2,7 +2,6 @@ require "json"
 
 lib LibC
   fun atoi(str : UInt8*) : Int32
-  fun ntohl(str : UInt32) : Int32
 end
 
 module PG
@@ -39,6 +38,28 @@ module PG
 
     abstract class Decoder
       def decode(value_ptr) end
+
+      private def swap32(ptr : UInt8*) : UInt32*
+        n = (((((((( 0_u32
+         ) | ptr[0] ) << 8
+         ) | ptr[1] ) << 8
+         ) | ptr[2] ) << 8
+         ) | ptr[3] )
+        pointerof(n)
+      end
+
+      private def swap64(ptr : UInt8*) : UInt64*
+        n = (((((((((((((((( 0_u64
+         ) | ptr[0] ) << 8
+         ) | ptr[1] ) << 8
+         ) | ptr[2] ) << 8
+         ) | ptr[3] ) << 8
+         ) | ptr[4] ) << 8
+         ) | ptr[5] ) << 8
+         ) | ptr[6] ) << 8
+         ) | ptr[7] )
+        pointerof(n)
+      end
     end
 
     class DefaultDecoder < Decoder
@@ -66,23 +87,20 @@ module PG
 
     class IntDecoder < Decoder
       def decode(value_ptr)
-        #Intrinsics.bswap32((value_ptr as UInt32*).value).to_i
-        LibC.ntohl((value_ptr as UInt32*).value)
+        (swap32(value_ptr) as Int32*).value
       end
     end
 
     class Float32Decoder < Decoder
       # byte swapped in the same way as int4
       def decode(value_ptr)
-        value_ptr[0], value_ptr[1], value_ptr[2], value_ptr[3] = value_ptr[3], value_ptr[2], value_ptr[1], value_ptr[0]
-        (value_ptr as Float32*).value
+        (swap32(value_ptr) as Float32*).value
       end
     end
 
     class Float64Decoder < Decoder
       def decode(value_ptr)
-        value_ptr[0], value_ptr[1], value_ptr[2], value_ptr[3], value_ptr[4], value_ptr[5], value_ptr[6], value_ptr[7] = value_ptr[7], value_ptr[6], value_ptr[5], value_ptr[4], value_ptr[3], value_ptr[2], value_ptr[1], value_ptr[0]
-        (value_ptr as Float64*).value
+        (swap64(value_ptr) as Float64*).value
       end
     end
 
@@ -94,26 +112,21 @@ module PG
 
     class JsonbDecoder < Decoder
       def decode(value_ptr)
+        # move past single 0x01 byte at the start of jsonb
         JSON.parse(String.new(value_ptr+1))
       end
     end
 
     class DateDecoder < Decoder
       def decode(value_ptr)
-        value_ptr[0], value_ptr[1], value_ptr[2], value_ptr[3] = value_ptr[3], value_ptr[2], value_ptr[1], value_ptr[0]
-
-        v = (value_ptr as Int32*).value
-
+        v = (swap32(value_ptr) as Int32*).value
         return Time.new(2000,1,1, kind: Time::Kind::Utc) + TimeSpan.new(v,0,0,0)
       end
     end
 
     class TimeDecoder < Decoder
       def decode(value_ptr)
-        value_ptr[0], value_ptr[1], value_ptr[2], value_ptr[3], value_ptr[4], value_ptr[5], value_ptr[6], value_ptr[7] = value_ptr[7], value_ptr[6], value_ptr[5], value_ptr[4], value_ptr[3], value_ptr[2], value_ptr[1], value_ptr[0]
-
-        v = (value_ptr as Int64*).value / 1000
-
+        v = (swap64(value_ptr) as Int64*).value / 1000
         return Time.new(2000,1,1, kind: Time::Kind::Utc) + TimeSpan.new(0,0,0,0,v)
       end
     end
